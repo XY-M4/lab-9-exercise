@@ -35,9 +35,8 @@ struct Interval {
 struct DynamicCamera {
     void update(Camera& camera,                           // the camera to update
                 const sf::Vector2f& trackedPosWorld,      // world coords of player to track
-                const sf::Vector2f& trackedVelocityWorld  // world velocity of player to track
-    ) {
-        // TODO: (HINTS/outline)
+                const sf::Vector2f& trackedVelocityWorld ) {  // world velocity of player to track
+        // DONE: (HINTS/outline)
         // collect statistics on the player position and velocity in (normalized, if you like)
         // window coordinates. Compute lookAhead distance in world coords, adjusting for
         // if the player is moving left or right.
@@ -47,6 +46,64 @@ struct DynamicCamera {
         // lookahead) appropriately. Next,
         // set the camera center by offsetting the cameraUnadjustedCenter, combining lookAhead.
         // Finally update cameraUnadjustedCenter, but without lookahead.
+        
+        // Convert window width to world coordinates
+        const float worldWidth = camera.windowPercentToWorldDist({1.f, 0.f}).x;
+
+        // Get player's horizontal position as a window percentage
+        const float playerXPercent = 0.5f + (trackedPosWorld.x - cameraUnadjustedCenter.x) / worldWidth;
+
+        // Calculate lookahead based on movement direction
+        float targetLookahead = 0.f;
+
+        if (trackedVelocityWorld.x > 0.f) {
+            targetLookahead = lookAhead * worldWidth;
+        } else if (trackedVelocityWorld.x < 0.f) {
+            targetLookahead = -lookAhead * worldWidth;
+        }
+
+        // Smooth lookahead using exponential moving average
+        lookaheadState += alpha * (targetLookahead - lookaheadState);
+
+        // Calculate camera movement without lookahead
+        float cameraDeltaX = 0.f;
+
+        if (!deadZoneX.contains(playerXPercent)) {
+
+            const float deadEdge =
+                playerXPercent < deadZoneX.min
+                    ? deadZoneX.min
+                    : deadZoneX.max;
+
+            if (softZoneX.contains(playerXPercent)) {
+
+                // Soft rejection zone
+                cameraDeltaX =
+                    alpha * (playerXPercent - deadEdge) * worldWidth;
+
+            } else {
+
+                // Hard rejection zone
+                const float softEdge =
+                    playerXPercent < softZoneX.min
+                        ? softZoneX.min
+                        : softZoneX.max;
+
+                cameraDeltaX =
+                    ((playerXPercent - softEdge) +
+                    alpha * (softEdge - deadEdge)) * worldWidth;
+            }
+        }
+
+        // Update camera position without lookahead
+        const sf::Vector2f nextUnadjustedCenter =
+            cameraUnadjustedCenter + sf::Vector2f{cameraDeltaX, 0.f};
+
+        // Set final camera center with lookahead
+        camera.setCameraCenter({nextUnadjustedCenter.x + lookaheadState, nextUnadjustedCenter.y});
+
+        // Store camera center without lookahead
+        cameraUnadjustedCenter = nextUnadjustedCenter;
     }
 
     float alpha;  // alpha to use for damping of camera position, *as well as* for smoothing of
